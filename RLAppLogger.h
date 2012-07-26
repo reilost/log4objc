@@ -15,8 +15,18 @@ typedef enum {
     RLAppLoggerLevelOff =4,
 } RLAppLoggerLevel;
 
-@interface RLAppLogger : NSObject
+@interface RLAppLogger : NSObject{
+    RLAppLoggerLevel _logLevel;
+    RLAppLoggerLevel _httpLogLevel;
+    NSArray *_logLevelName;
+    BOOL _logToOneFile;
+    NSString *_logDirectoryPath;
+}
+
 
 + (RLAppLogger *)sharedLogger;
-- (void) log: (NSString *) format, ... ;
+- (void) debug: (NSString *) format, ... ;
+- (void) info: (NSString *) format, ... ;
+- (void) warn: (NSString *) format, ... ;
+- (void) error: (NSString *) format, ... ;
 @end

@@ -15,7 +15,7 @@
 
 - (void) testShareLogger{
     RLAppLogger *logger= [RLAppLogger sharedLogger];
-    [logger log:@"%@",@"hahah"];
+    [logger debug:@"%@",@"hahah"];
 //    Reachability *reach = [Reachability reachabilityForInternetConnection];
 //    if (reach.isReachable) {
 //        NSLog(@"reach.isReachable");

@@ -9,12 +9,8 @@
 #import "AFHTTPRequestOperation.h"
 #import "NSObject+Additions.h"
 
-@implementation RLAppLogger{
-    RLAppLoggerLevel _logLevel;
-    RLAppLoggerLevel _httpLogLevel;
-    NSArray *_logLevelName;
-}
-
+@implementation RLAppLogger
+#pragma mark share logger and life 
 + (RLAppLogger *)sharedLogger{
     static RLAppLogger *_sharedLogger = nil;
     
@@ -32,8 +28,10 @@
 - (id) init{
     self = [super init];
     if (self) {
+        _logLevelName=@[ @"DEBUG",@"INFO",@"WARN",@"ERROR"];
         _logLevel = RLAppLoggerLevelOff;
-        _httpLogLevel =RLAppLoggerLevelOff;
+        _httpLogLevel = RLAppLoggerLevelOff;
+        _logToOneFile = NO;
         NSString *configFilePath = [[NSBundle mainBundle] pathForResource:@"LogConfig"
                                                                    ofType:@"plist"];
         NSDictionary *configDict = [NSDictionary dictionaryWithContentsOfFile:configFilePath];
@@ -48,49 +46,55 @@
                 _httpLogLevel =httpLogLevel;
                 [self startLogHttpInfo];
             }
+            
+            _logToOneFile = [[configDict objectForKey:@"LOG_TO_ONE_FILE"] boolValue];
+            [self configLogFiles];
         }
-//#if __has_feature(objc_array_literals)
-        _logLevelName=@[ @"DEBUG",@"INFO",@"WARN",@"ERROR"];
-//#else
-//        id objects[] = { @"DEBUG",@"INFO",@"WARN",@"ERROR"};
-//        _logLevelName= [NSArray arrayWithObjects:objects count:4];
-//#endif
+
+
+
         
     }
     return self;
 }
 
-- (void) startLogHttpInfo{
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(HTTPOperationDidStart:)
-                                                 name:AFNetworkingOperationDidStartNotification
-                                               object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(HTTPOperationDidFinish:)
-                                                 name:AFNetworkingOperationDidFinishNotification
-                                               object:nil];
-}
-- (void) log: (NSString *) format, ... {
-    if (_logLevel ==RLAppLoggerLevelOff) {
-        return;
-    }
+
+#pragma mark public log method
+- (void) debug: (NSString *) format, ... {
     va_list args;
     va_start(args,format);
-    if (_logLevel <=RLAppLoggerLevelInfo ) {
-        [self write:RLAppLoggerLevelInfo :format :args];
-    }
+    [self log:RLAppLoggerLevelDebug :format :args];
+    va_end(args);}
+
+- (void) warn: (NSString *) format, ... {
+    va_list args;
+    va_start(args,format);
+    [self log:RLAppLoggerLevelWarn :format :args];
     va_end(args);
-    
+}
+- (void) error: (NSString *) format, ... {
+    va_list args;
+    va_start(args,format);
+    [self log:RLAppLoggerLevelError:format :args];
+    va_end(args);}
+
+
+- (void) info: (NSString *) format, ... {
+    va_list args;
+    va_start(args,format);
+    [self log:RLAppLoggerLevelInfo :format :args];
+    va_end(args);
 }
 
-- (void) error: (NSString *) format, ... {
+#pragma mark private log method
+- (void) log:(RLAppLoggerLevel ) level :(NSString *) format :(va_list )args {
     if (_logLevel ==RLAppLoggerLevelOff) {
         return;
     }
-    va_list args;
-    va_start(args,format);
-//    [[LogUtil shareUtil] write:2 :format :args];
-    va_end(args);
+    if (_logLevel <=level) {
+        [self write:level :format :args];
+    }
+
 }
 
 - (void) write:(RLAppLoggerLevel)logLevel :(NSString *) format :(va_list )args{
@@ -101,11 +105,26 @@
 - (void)  write:(RLAppLoggerLevel)logLevel logInfo:(NSString *) logInfo {
     dispatch_block_t block =^(){
         NSString *formattedLog =  [NSString stringWithFormat:@"%@ - [%@] - %@",
-                                   _logLevelName[logLevel],[NSDate date],logInfo];
+                                   [_logLevelName objectAtIndex:logLevel],[NSDate date],logInfo];
         
-        if (_logLevel == RLAppLoggerLevelDebug) {
+        if (_logLevel == RLAppLoggerLevelDebug || _httpLogLevel ==RLAppLoggerLevelDebug) {
             printf("%s\r\n", [formattedLog UTF8String]);
         }
+        NSString  *fileName;
+        if (_logToOneFile) {
+            fileName =  @"applog.log";
+        }else{
+           fileName  = [NSString stringWithFormat:@"%@.log",[_logLevelName objectAtIndex:logLevel]];
+        }
+        NSString * filePath = [_logDirectoryPath stringByAppendingPathComponent:fileName];
+        NSData *logEntry =  [[formattedLog stringByAppendingString:@"\r\n"]
+                             dataUsingEncoding:NSUTF8StringEncoding];
+
+        FILE *p = fopen([filePath fileSystemRepresentation], "a+");
+        fwrite((const uint8_t *)[logEntry bytes], 1, [logEntry length], p);
+        fclose(p);
+
+                
     };
     dispatch_queue_t queue =dispatch_get_current_queue();
     if (queue != dispatch_get_main_queue()) {
@@ -116,10 +135,23 @@
 }
 
 
+
+#pragma mark http log
+- (void) startLogHttpInfo{
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(HTTPOperationDidStart:)
+                                                 name:AFNetworkingOperationDidStartNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(HTTPOperationDidFinish:)
+                                                 name:AFNetworkingOperationDidFinishNotification
+                                               object:nil];
+}
+
 - (void)HTTPOperationDidStart:(NSNotification *)notification {
     AFHTTPRequestOperation *operation = (AFHTTPRequestOperation *)[notification object];
-
-
+    
+    
     NSNumber *startTime =@(CFAbsoluteTimeGetCurrent());
     [operation associateValue:startTime withKey:@"start_time"];
     NSString *body = nil;
@@ -130,11 +162,11 @@
     if (_httpLogLevel<=RLAppLoggerLevelInfo) {
         NSString *log;
         if (_httpLogLevel == RLAppLoggerLevelInfo) {
-            log=[NSString stringWithFormat:@"HTTP:'%@' ,'%@' ",
+            log=[NSString stringWithFormat:@"HTTP-START:'%@' ,'%@' ",
                  [operation.request HTTPMethod],
                  [[operation.request URL] absoluteString]];
         }else{
-            log=[NSString stringWithFormat:@"HTTP:'%@' ,'%@' ,'%@','%@' ",
+            log=[NSString stringWithFormat:@"HTTP-START:'%@' ,'%@' ,'%@','%@' ",
                  [operation.request HTTPMethod],
                  [[operation.request URL] absoluteString],
                  [operation.request allHTTPHeaderFields],
@@ -151,13 +183,13 @@
     if ([operation isKindOfClass:[AFHTTPRequestOperation class]]) {
         responseString =operation.responseString;
     }
-
-    NSNumber *endTime = @(CFAbsoluteTimeGetCurrent()); 
+    
+    NSNumber *endTime = @(CFAbsoluteTimeGetCurrent());
     NSNumber *startTime = [operation associatedValueForKey:@"start_time"];
     NSNumber *costTime = @( ([endTime doubleValue]-[startTime doubleValue]) *1000 );
     NSString *log;
     if (operation.error) {
-        log= [NSString stringWithFormat:@"HTTP:'%@' , '%@','%@ ms', (%ld):'%@'",
+        log= [NSString stringWithFormat:@"HTTP-ERROR:'%@' , '%@','%@ ms', (%ld):'%@'",
               [operation.request HTTPMethod],
               [[operation.response URL] absoluteString],
               costTime,
@@ -169,13 +201,13 @@
     
     
     if (_httpLogLevel == RLAppLoggerLevelInfo) {
-        log=[NSString stringWithFormat:@"HTTP:'%@' ,'%@' ,'%@ ms', (%ld)",
+        log=[NSString stringWithFormat:@"HTTP-END:'%@' ,'%@' ,'%@ ms', (%ld)",
              [operation.request HTTPMethod],
              [[operation.response URL] absoluteString],
              costTime,
              (long)[operation.response statusCode]];
     }else{
-        log=[NSString stringWithFormat:@"HTTP:'%@' ,'%@' ,'%@ ms', (%ld):'%@'",
+        log=[NSString stringWithFormat:@"HTTP-END:'%@' ,'%@' ,'%@ ms', (%ld):'%@'",
              [operation.request HTTPMethod],
              [[operation.response URL] absoluteString],
              costTime,
@@ -185,7 +217,85 @@
     
     
     [self write:_httpLogLevel logInfo:log];
-
+    
+}
+#pragma mark log pipline
+- (void) configLogFiles{
+    if (_logLevel == RLAppLoggerLevelOff && _httpLogLevel == RLAppLoggerLevelOff) {
+        return;
+    }
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES);
+    _logDirectoryPath=[[paths objectAtIndex:0] stringByAppendingPathComponent:@"Logs"] ;
+    NSFileManager *fm = [[NSFileManager alloc] init];
+    NSError *error;
+    if (![fm fileExistsAtPath:_logDirectoryPath]) {
+        [fm createDirectoryAtPath:_logDirectoryPath
+      withIntermediateDirectories:YES
+                       attributes:nil
+                            error:&error];
+    }
+    
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        
+        NSString *fileName;
+        
+        
+        if (_logToOneFile) {
+            fileName =  @"applog.log";
+            [self checkLogFile:fileName];
+        }else{
+            RLAppLoggerLevel minLevel =  MIN(_logLevel, _httpLogLevel);
+            if (minLevel !=RLAppLoggerLevelOff) {
+                
+                for (int i =minLevel; i<RLAppLoggerLevelOff; i++) {
+                    fileName = [NSString stringWithFormat:@"%@.log",[_logLevelName objectAtIndex:i]];
+                    [self checkLogFile:fileName];
+                }
+            }
+            
+        }
+        
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(sendLogFile:)
+                                                     name:UIApplicationDidBecomeActiveNotification
+                                                   object:nil];
+    });
+    
+}
+- (void) checkLogFile:(NSString *) logFileName{
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString * filePath = [_logDirectoryPath stringByAppendingPathComponent:logFileName];
+    if (![fm fileExistsAtPath:filePath]) {
+        [fm createFileAtPath:filePath contents:nil attributes:nil];
+    }
+}
+- (void) tarAndSendLog:(NSString *) logFileName{
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString * filePath = [_logDirectoryPath stringByAppendingPathComponent:logFileName];
+    if (![fm fileExistsAtPath:filePath]) {
+        NSLog(@"tar and send file %@",logFileName);
+    }
+}
+- (void)sendLogFile:(NSNotification *)notification {
+    dispatch_block_t block =^(){
+        NSString *fileName;
+        if (_logToOneFile) {
+            fileName =  @"applog.log";
+            [self tarAndSendLog:fileName];
+        }else{
+            for (int i =0; i<RLAppLoggerLevelOff; i++) {
+                fileName = [NSString stringWithFormat:@"%@.log",[_logLevelName objectAtIndex:i]];
+                [self tarAndSendLog:fileName];
+            }
+        }
+    };
+    dispatch_queue_t queue =dispatch_get_current_queue();
+    if (queue != dispatch_get_main_queue()) {
+        dispatch_async(queue, block);
+    }else{
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), block);
+    }
 }
 
 @end

@@ -1,0 +1,3 @@
+[submodule "Godzippa"]
+	path = Godzippa
+	url = git@github.com:reilost/Godzippa.git

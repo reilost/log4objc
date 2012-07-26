@@ -7,7 +7,7 @@
 	<key>LOG_RECEIVER_ADDRESS</key>
 	<string></string>
 	<key>LOG_TO_ONE_FILE</key>
-	<true/>
+	<false/>
 	<key>LOG_TO_CONSOLE</key>
 	<true/>
 	<key>LOG_LEVEL</key>
