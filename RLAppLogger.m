@@ -8,7 +8,7 @@
 #import "RLAppLogger.h"
 #import "AFHTTPRequestOperation.h"
 #import "NSObject+Additions.h"
-
+#import "DataCompressorKit.h"
 @implementation RLAppLogger
 #pragma mark share logger and life 
 + (RLAppLogger *)sharedLogger{
@@ -120,7 +120,7 @@
         NSData *logEntry =  [[formattedLog stringByAppendingString:@"\r\n"]
                              dataUsingEncoding:NSUTF8StringEncoding];
 
-        FILE *p = fopen([filePath fileSystemRepresentation], "a+");
+        FILE *p = fopen([filePath fileSystemRepresentation], "a");
         fwrite((const uint8_t *)[logEntry bytes], 1, [logEntry length], p);
         fclose(p);
 
@@ -234,47 +234,26 @@
                        attributes:nil
                             error:&error];
     }
-    
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        
-        NSString *fileName;
-        
-        
-        if (_logToOneFile) {
-            fileName =  @"applog.log";
-            [self checkLogFile:fileName];
-        }else{
-            RLAppLoggerLevel minLevel =  MIN(_logLevel, _httpLogLevel);
-            if (minLevel !=RLAppLoggerLevelOff) {
-                
-                for (int i =minLevel; i<RLAppLoggerLevelOff; i++) {
-                    fileName = [NSString stringWithFormat:@"%@.log",[_logLevelName objectAtIndex:i]];
-                    [self checkLogFile:fileName];
-                }
-            }
-            
-        }
-        
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(sendLogFile:)
-                                                     name:UIApplicationDidBecomeActiveNotification
-                                                   object:nil];
-    });
-    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(sendLogFile:)
+                                                 name:UIApplicationDidBecomeActiveNotification
+                                               object:nil];
 }
-- (void) checkLogFile:(NSString *) logFileName{
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSString * filePath = [_logDirectoryPath stringByAppendingPathComponent:logFileName];
-    if (![fm fileExistsAtPath:filePath]) {
-        [fm createFileAtPath:filePath contents:nil attributes:nil];
-    }
-}
+
 - (void) tarAndSendLog:(NSString *) logFileName{
+    NSString *newFileName = [NSString stringWithFormat:@"%d_%@",
+                             (int)[[NSDate date] timeIntervalSince1970],
+                             logFileName];
+    NSString *zipFileName = [NSString stringWithFormat:@"%@.tar",newFileName];
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString * filePath = [_logDirectoryPath stringByAppendingPathComponent:logFileName];
-    if (![fm fileExistsAtPath:filePath]) {
-        NSLog(@"tar and send file %@",logFileName);
+    NSString * newFilePath = [_logDirectoryPath stringByAppendingPathComponent:newFileName];
+    NSString * zipFilePath = [_logDirectoryPath stringByAppendingPathComponent:zipFileName];
+    if ([fm fileExistsAtPath:filePath]) {
+        [fm moveItemAtPath:filePath toPath:newFilePath error:nil];
+        [DataCompressorKit compressDataFromFile:newFilePath toFile:zipFilePath error:nil];
+        [fm removeItemAtPath:newFilePath error:nil];
+        [DataCompressorKit uncompressDataFromFile:zipFilePath toFile:filePath error:nil];
     }
 }
 - (void)sendLogFile:(NSNotification *)notification {
