@@ -253,7 +253,6 @@
         [fm moveItemAtPath:filePath toPath:newFilePath error:nil];
         [DataCompressorKit compressDataFromFile:newFilePath toFile:zipFilePath error:nil];
         [fm removeItemAtPath:newFilePath error:nil];
-        [DataCompressorKit uncompressDataFromFile:zipFilePath toFile:filePath error:nil];
     }
 }
 - (void)sendLogFile:(NSNotification *)notification {
