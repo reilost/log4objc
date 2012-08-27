@@ -21,6 +21,7 @@ typedef enum {
     NSArray *_logLevelName;
     BOOL _logToOneFile;
     NSString *_logDirectoryPath;
+    NSSet *_ignogreFiles;
 }
 + (RLAppLogger *)sharedLogger;
 - (void) debug: (NSString *) format, ... ;

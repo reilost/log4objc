@@ -49,10 +49,11 @@
             
             _logToOneFile = [[configDict objectForKey:@"LOG_TO_ONE_FILE"] boolValue];
             [self configLogFiles];
+            _ignogreFiles =[NSSet setWithArray:[configDict objectForKey:@"LOG_IGNORE_FILES"]];
         }
 
 
-
+        
         
     }
     return self;
@@ -99,6 +100,24 @@
 
 - (void) write:(RLAppLoggerLevel)logLevel :(NSString *) format :(va_list )args{
     NSString *logEntry = [[NSString alloc] initWithFormat:format arguments:args];
+    if (_logLevel ==RLAppLoggerLevelDebug) {
+        NSUInteger location =[logEntry rangeOfString:@"["].location;
+        if (location!= NSNotFound) {
+            NSString *subString=[logEntry substringFromIndex:location+1] ;
+            NSUInteger finishIndex =[subString rangeOfString:@"]"].location;
+            if (finishIndex !=NSNotFound) {
+                subString = [subString substringToIndex:finishIndex];
+                NSArray *array = [subString componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if ([array count]>0) {
+                    NSString *className = [array objectAtIndex:0];
+                    if ([_ignogreFiles containsObject:className]) {
+                        return;
+                    }
+                }
+            }
+            
+        }
+    }
     [self write:logLevel logInfo:logEntry];
    
 }
